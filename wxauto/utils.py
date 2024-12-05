@@ -35,6 +35,9 @@ def GetPathByHwnd(hwnd):
         return process.exe()
     except Exception as e:
         print(f"Error: {e}")
+        log_file_path = "backup_log.txt"
+        with open(log_file_path, 'a') as f:
+            f.write(f"GetPathByHwnd {hwnd}时出错: {e}\n")
         return None
 
 def GetVersionByPath(file_path):

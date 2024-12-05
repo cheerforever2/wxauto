@@ -502,6 +502,21 @@ class WeChat(WeChatBase):
         MsgItems = self.C_MsgList.GetChildren()
         msgs = self._getmsgs(MsgItems, savepic, savefile=savefile, savevoice=savevoice)
         return msgs
+        
+    def GetTodayMessage(self, savepic=False, savefile=False, savevoice=False, savevideo=False):
+        '''获取当前窗口中加载的今天聊天记录
+        
+        Args:
+            savepic (bool): 是否自动保存聊天图片
+            
+        Returns:
+            list: 聊天记录信息
+        '''
+        if not self.C_MsgList.Exists(0.2):
+            return []
+        MsgItems = self.C_MsgList.GetChildren()
+        msgs = self._gettodaymsgs(MsgItems, savepic, savefile=savefile, savevoice=savevoice, savevideo=savevideo)
+        return msgs
     
     def LoadMoreMessage(self):
         """加载当前聊天页面更多聊天信息

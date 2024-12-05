@@ -6,8 +6,10 @@ from .errors import *
 import datetime
 import time
 import os
+import shutil
 import re
-
+import configparser
+from datetime import datetime
 
 
 class WxParam:
@@ -16,7 +18,20 @@ class WxParam:
     RECALL_TEXT_HEIGHT = 45
     CHAT_TEXT_HEIGHT = 52
     CHAT_IMG_HEIGHT = 117
-    DEFALUT_SAVEPATH = os.path.join(os.getcwd(), 'wxauto文件')
+    
+    config = configparser.ConfigParser()
+    config.read('backup_config.ini', encoding='utf-8')
+    backup_base_dir = config.get('BackupSettings', 'backup_base_dir')
+
+    current_date_time = datetime.now()
+    current_date = current_date_time.strftime('%Y%m%d')
+    current_time = current_date_time.strftime('%H:%M:%S')
+
+    # 创建以当前日期命名的备份目录（先检查是否已存在）
+    backup_dir = os.path.join(backup_base_dir, current_date)
+    if not os.path.exists(backup_dir):
+        os.makedirs(backup_dir, exist_ok=True)
+    DEFALUT_SAVEPATH = backup_dir
 
 class WeChatBase:
     def _lang(self, text, langtype='MAIN'):
@@ -91,6 +106,98 @@ class WeChatBase:
                 msg.content = voice_text if voice_text else msg.content
             msg.info[1] = msg.content
         return msgs
+        
+    def _gettodaymsgs(self, msgitems, savepic=False, savefile=False, savevoice=False, savevideo=False):
+        msgs = []
+        for MsgItem in msgitems:
+            if MsgItem.ControlTypeName == 'ListItemControl':
+                msgs.append(self._split(MsgItem))
+
+        msgtypes = [
+            f"[{self._lang('图片')}]",
+            f"[{self._lang('文件')}]",
+            f"[{self._lang('语音')}]",
+            f"[{self._lang('视频')}]",
+        ]
+
+        if not [i for i in msgs if i.content[:4] in msgtypes]:
+            return 
+            
+        if not os.path.exists(WxParam.DEFALUT_SAVEPATH):
+            os.makedirs(WxParam.DEFALUT_SAVEPATH)
+        else:
+            self.empty_folder(WxParam.DEFALUT_SAVEPATH)
+            with open('backup_log.txt', 'a') as f:
+                f.write(f"{datetime.now()} - 已清空原 {WxParam.DEFALUT_SAVEPATH} 文件夹，准备重新备份。\n")
+
+        pic_count = 0
+        video_count = 0
+        is_today = False
+
+        for msg in msgs:
+            if not is_today:
+                if msg.type not in ('sys'):
+                    continue;
+                else:
+                    is_today = self.is_today_msg(msg)
+            else:              
+                if msg.type not in ('friend', 'self'):
+                    continue
+                if msg.content.startswith(f"[{self._lang('图片')}]") and savepic:
+                    imgpath = self._download_pic(msg.control)
+                    msg.content = imgpath if imgpath else msg.content
+                    pic_count += 1
+                elif msg.content.startswith(f"[{self._lang('文件')}]") and savefile:
+                    filepath = self._download_file(msg.control)
+                    msg.content = filepath if filepath else msg.content
+                elif msg.content.startswith(f"[{self._lang('语音')}]") and savevoice:
+                    voice_text = self._get_voice_text(msg.control)
+                    msg.content = voice_text if voice_text else msg.content
+                elif msg.content.startswith(f"[{self._lang('视频')}]") and savevideo:
+                    videopath = self._download_video(msg.control)
+                    msg.content = videopath if videopath else msg.content
+                    video_count += 1                    
+                msg.info[1] = msg.content
+            
+        # 记录备份成功信息到日志文件
+        log_file_path = "backup_log.txt"
+        current_date_time = datetime.now()
+        with open(log_file_path, 'a') as f:
+            f.write(f"{current_date_time} - 已成功备份 {pic_count} 个图片，{video_count} 个视频，到 {WxParam.DEFALUT_SAVEPATH}\n")
+        
+        return msgs    
+            
+    def empty_folder(self, folder_path):
+        for root, dirs, files in os.walk(folder_path, topdown=False):
+            for file in files:
+                file_path = os.path.join(root, file)
+                try:
+                    os.remove(file_path)
+                except Exception as e:
+                    log_file_path = "backup_log.txt"
+                    with open(log_file_path, 'a') as f:
+                        f.write(f"{datetime.now()} - 删除文件 {file_path} 时出错: {e}\n")
+            for dir in dirs:
+                dir_path = os.path.join(root, dir)
+                try:
+                    shutil.rmtree(dir_path)
+                except Exception as e:
+                    log_file_path = "backup_log.txt"
+                    with open(log_file_path, 'a') as f:
+                        f.write(f"{datetime.now()} - 删除文件夹 {dir_path} 时出错: {e}\n")
+                    
+    def is_today_msg(self, msg):
+        # 获取今天的日期
+        today = datetime.now().date()
+        # 获取格式化后的时间对应的日期部分，与今天日期进行比较
+        try:
+            msgtime = datetime.strptime(ParseWeChatTime(msg.content), '%Y-%m-%d %H:%M:%S')
+            return msgtime.date() == today
+        except:
+            log_file_path = "backup_log.txt"
+            with open(log_file_path, 'a') as f:
+                f.write(f"{datetime.now()} - 解析消息时间异常{msg.content}\n")
+            return False
     
     def _download_pic(self, msgitem):
         self._show()
@@ -102,6 +209,18 @@ class WeChatBase:
         imgobj = WeChatImage()
         savepath = imgobj.Save()
         imgobj.Close()
+        return savepath
+        
+    def _download_video(self, msgitem):
+        self._show()
+        videocontrol = msgitem.ButtonControl(Name='')
+        if not videocontrol.Exists(0.5):
+            return None
+        RollIntoView(self.C_MsgList, videocontrol)
+        videocontrol.Click(simulateMove=False)
+        videoobj = WeChatVideo()
+        savepath = videoobj.Save()
+        videoobj.Close()
         return savepath
 
     def _download_file(self, msgitem):
@@ -451,14 +570,97 @@ class WeChatImage:
         """
         
         if not savepath:
-            savepath = os.path.join(WxParam.DEFALUT_SAVEPATH, f"微信图片_{datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')}.jpg")
-        if not os.path.exists(os.path.split(savepath)[0]):
-            os.makedirs(os.path.split(savepath)[0])
+            savepath = os.path.join(WxParam.DEFALUT_SAVEPATH, f"微信图片_{datetime.now().strftime('%Y%m%d%H%M%S%f')}.jpg")
             
         if self.t_zoom.Exists(maxSearchSeconds=5):
             self.t_save.Click(simulateMove=False)
         else:
             raise TimeoutError('下载超时')
+        t0 = time.time()
+        while True:
+            if time.time() - t0 > timeout:
+                raise TimeoutError('下载超时')
+            handle = FindWindow(name='另存为...')
+            if handle:
+                break
+        t0 = time.time()
+        while True:
+            if time.time() - t0 > timeout:
+                raise TimeoutError('下载超时')
+            try:
+                edithandle = [i for i in GetAllWindowExs(handle) if i[1] == 'Edit' and i[-1]][0][0]
+                savehandle = FindWinEx(handle, classname='Button', name='保存(&S)')[0]
+                if edithandle and savehandle:
+                    break
+            except:
+                pass
+        win32gui.SendMessage(edithandle, win32con.WM_SETTEXT, '', str(savepath))
+        win32gui.SendMessage(savehandle, win32con.BM_CLICK, 0, 0)
+        return savepath
+        
+    def Previous(self):
+        """上一张"""
+        if self.t_previous.IsKeyboardFocusable:
+            self._show()
+            self.t_previous.Click(simulateMove=False)
+            return True
+        else:
+            Warnings.lightred('上一张按钮不可用', stacklevel=2)
+            return False
+        
+    def Next(self, warning=True):
+        """下一张"""
+        if self.t_next.IsKeyboardFocusable:
+            self._show()
+            self.t_next.Click(simulateMove=False)
+            return True
+        else:
+            if warning:
+                Warnings.lightred('已经是最新的图片了', stacklevel=2)
+            return False
+        
+    def Close(self):
+        self._show()
+        self.api.SendKeys('{Esc}')
+        
+class WeChatVideo:
+    def __init__(self, language='cn') -> None:
+        self.language = language
+        self.api = uia.WindowControl(ClassName='ImagePreviewWnd', searchDepth=1)
+        MainControl1 = [i for i in self.api.GetChildren() if not i.ClassName][0]
+        self.ToolsBox, self.PhotoBox = MainControl1.GetChildren()
+        
+        # tools按钮
+        self.t_previous = self.ToolsBox.ButtonControl(Name=self._lang('上一张'))
+        self.t_next = self.ToolsBox.ButtonControl(Name=self._lang('下一张'))
+        self.t_save = self.ToolsBox.ButtonControl(Name=self._lang('另存为...'))
+
+    def __repr__(self) -> str:
+        return f"<wxauto WeChat Video at {hex(id(self))}>"
+    
+    def _lang(self, text):
+        return IMAGE_LANGUAGE[text][self.language]
+    
+    def _show(self):
+        HWND = FindWindow(classname='ImagePreviewWnd')
+        win32gui.ShowWindow(HWND, 1)
+        self.api.SwitchToThisWindow()
+    
+    def Save(self, savepath='', timeout=50):
+        """保存视频
+
+        Args:
+            savepath (str): 绝对路径，包括文件名和后缀，例如："D:/Images/微信视频_xxxxxx.jpg"
+            （如果不填，则默认为当前脚本文件夹下，新建一个“微信图片”的文件夹，保存在该文件夹内）
+        
+        Returns:
+            str: 文件保存路径，即savepath
+        """
+        
+        if not savepath:
+            savepath = os.path.join(WxParam.DEFALUT_SAVEPATH, f"微信视频_{datetime.now().strftime('%Y%m%d%H%M%S%f')}.mp4")
+
+        self.t_save.Click(simulateMove=False)
         t0 = time.time()
         while True:
             if time.time() - t0 > timeout:
