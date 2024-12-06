@@ -20,6 +20,11 @@ class WxParam:
     CHAT_TEXT_HEIGHT = 52
     CHAT_IMG_HEIGHT = 117
     
+    # 获取当前脚本所在的目录路径
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # 将当前工作目录更改为脚本所在目录的上一级
+    os.chdir(os.path.join(script_dir, '..'))
+    
     config = configparser.ConfigParser()
     config.read('backup_config.ini', encoding='utf-8')
     backup_base_dir = config.get('BackupSettings', 'backup_base_dir')
