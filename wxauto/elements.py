@@ -10,6 +10,7 @@ import shutil
 import re
 import configparser
 from datetime import datetime
+import cv2
 
 
 class WxParam:
@@ -127,7 +128,7 @@ class WeChatBase:
             os.makedirs(WxParam.DEFALUT_SAVEPATH)
         else:
             self.empty_folder(WxParam.DEFALUT_SAVEPATH)
-            with open('backup_log.txt', 'a') as f:
+            with open('backup_log.txt', 'a', encoding='gbk') as f:
                 f.write(f"{datetime.now()} - 已清空原 {WxParam.DEFALUT_SAVEPATH} 文件夹，准备重新备份。\n")
 
         pic_count = 0
@@ -146,7 +147,8 @@ class WeChatBase:
                 if msg.content.startswith(f"[{self._lang('图片')}]") and savepic:
                     imgpath = self._download_pic(msg.control)
                     msg.content = imgpath if imgpath else msg.content
-                    pic_count += 1
+                    if imgpath:
+                        pic_count += 1
                 elif msg.content.startswith(f"[{self._lang('文件')}]") and savefile:
                     filepath = self._download_file(msg.control)
                     msg.content = filepath if filepath else msg.content
@@ -162,7 +164,7 @@ class WeChatBase:
         # 记录备份成功信息到日志文件
         log_file_path = "backup_log.txt"
         current_date_time = datetime.now()
-        with open(log_file_path, 'a') as f:
+        with open(log_file_path, 'a', encoding='gbk') as f:
             f.write(f"{current_date_time} - 已成功备份 {pic_count} 个图片，{video_count} 个视频，到 {WxParam.DEFALUT_SAVEPATH}\n")
         
         return msgs    
@@ -175,7 +177,7 @@ class WeChatBase:
                     os.remove(file_path)
                 except Exception as e:
                     log_file_path = "backup_log.txt"
-                    with open(log_file_path, 'a') as f:
+                    with open(log_file_path, 'a', encoding='gbk') as f:
                         f.write(f"{datetime.now()} - 删除文件 {file_path} 时出错: {e}\n")
             for dir in dirs:
                 dir_path = os.path.join(root, dir)
@@ -183,7 +185,7 @@ class WeChatBase:
                     shutil.rmtree(dir_path)
                 except Exception as e:
                     log_file_path = "backup_log.txt"
-                    with open(log_file_path, 'a') as f:
+                    with open(log_file_path, 'a', encoding='gbk') as f:
                         f.write(f"{datetime.now()} - 删除文件夹 {dir_path} 时出错: {e}\n")
                     
     def is_today_msg(self, msg):
@@ -195,8 +197,9 @@ class WeChatBase:
             return msgtime.date() == today
         except:
             log_file_path = "backup_log.txt"
-            with open(log_file_path, 'a') as f:
-                f.write(f"{datetime.now()} - 解析消息时间异常{msg.content}\n")
+            with open(log_file_path, 'a', encoding='gbk') as f:
+                valid_content = ''.join(char for char in msg.content if ord(char) < 0x10000)
+                f.write(f"{datetime.now()} - 解析消息时间异常{valid_content}\n")
             return False
     
     def _download_pic(self, msgitem):
@@ -209,7 +212,28 @@ class WeChatBase:
         imgobj = WeChatImage()
         savepath = imgobj.Save()
         imgobj.Close()
-        return savepath
+        
+        # 判断图片是否包含人像，非人像删除
+        if self.is_includes_people(savepath):
+            return savepath
+        else:
+            with open('backup_log.txt', 'a', encoding='gbk') as f:
+                f.write(f"{datetime.now()} - 删除非人像图片 {savepath} 。\n")
+            os.remove(savepath)
+            return None
+            
+    def is_includes_people(self, savepath):          
+        # 加载人脸检测分类器
+        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+        # 读取图像
+        img = cv2.imread(savepath)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        # 进行人脸检测
+        faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+        
+        return len(faces) > 0
         
     def _download_video(self, msgitem):
         self._show()
@@ -562,7 +586,7 @@ class WeChatImage:
         """保存图片
 
         Args:
-            savepath (str): 绝对路径，包括文件名和后缀，例如："D:/Images/微信图片_xxxxxx.jpg"
+            savepath (str): 绝对路径，包括文件名和后缀，例如："D:/Images/image_xxxxxx.jpg"
             （如果不填，则默认为当前脚本文件夹下，新建一个“微信图片”的文件夹，保存在该文件夹内）
         
         Returns:
@@ -570,7 +594,7 @@ class WeChatImage:
         """
         
         if not savepath:
-            savepath = os.path.join(WxParam.DEFALUT_SAVEPATH, f"微信图片_{datetime.now().strftime('%Y%m%d%H%M%S%f')}.jpg")
+            savepath = os.path.join(WxParam.DEFALUT_SAVEPATH, f"image_{datetime.now().strftime('%Y%m%d%H%M%S%f')}.jpg")
             
         if self.t_zoom.Exists(maxSearchSeconds=5):
             self.t_save.Click(simulateMove=False)
@@ -650,7 +674,7 @@ class WeChatVideo:
         """保存视频
 
         Args:
-            savepath (str): 绝对路径，包括文件名和后缀，例如："D:/Images/微信视频_xxxxxx.jpg"
+            savepath (str): 绝对路径，包括文件名和后缀，例如："D:/Images/video_xxxxxx.jpg"
             （如果不填，则默认为当前脚本文件夹下，新建一个“微信图片”的文件夹，保存在该文件夹内）
         
         Returns:
@@ -658,7 +682,7 @@ class WeChatVideo:
         """
         
         if not savepath:
-            savepath = os.path.join(WxParam.DEFALUT_SAVEPATH, f"微信视频_{datetime.now().strftime('%Y%m%d%H%M%S%f')}.mp4")
+            savepath = os.path.join(WxParam.DEFALUT_SAVEPATH, f"video_{datetime.now().strftime('%Y%m%d%H%M%S%f')}.mp4")
 
         self.t_save.Click(simulateMove=False)
         t0 = time.time()

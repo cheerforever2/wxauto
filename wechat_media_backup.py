@@ -53,7 +53,7 @@ def manage_log_file_size(log_file_path):
     one_month_seconds = 30 * 24 * 60 * 60
     current_time_seconds = time.time()
 
-    with open(log_file_path, 'r') as f:
+    with open(log_file_path, 'r', encoding='gbk') as f:
         lines = f.readlines()
 
     delete_start_index = None
@@ -68,7 +68,7 @@ def manage_log_file_size(log_file_path):
     if delete_start_index is not None:
         lines = lines[delete_start_index:]
 
-    with open('backup_log.txt', 'w') as f:
+    with open('backup_log.txt', 'w', encoding='gbk') as f:
         f.writelines(lines)
 
 if __name__ == "__main__":
@@ -83,7 +83,7 @@ if __name__ == "__main__":
         backup_today_chat_media(target_chat_name, backup_base_dir)
     else:
         log_file_path = "backup_log.txt"
-        with open(log_file_path, 'a') as f:
+        with open(log_file_path, 'a', encoding='gbk') as f:
             f.write(f"{datetime.now()} - 不是法定工作日，不执行备份\n")
 
     # 管理日志文件大小

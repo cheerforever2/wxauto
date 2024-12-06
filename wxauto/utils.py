@@ -36,7 +36,7 @@ def GetPathByHwnd(hwnd):
     except Exception as e:
         print(f"Error: {e}")
         log_file_path = "backup_log.txt"
-        with open(log_file_path, 'a') as f:
+        with open(log_file_path, 'a', encoding='gbk') as f:
             f.write(f"GetPathByHwnd {hwnd}时出错: {e}\n")
         return None
 
