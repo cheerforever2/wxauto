@@ -236,7 +236,7 @@ class WeChatBase:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
         # 进行人脸检测
-        faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+        faces = face_cascade.detectMultiScale(gray, 1.1, 3)
         
         return len(faces) > 0
         
